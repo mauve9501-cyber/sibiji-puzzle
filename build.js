@@ -22,6 +22,18 @@ const SVG_MAP = {
   dog: "dog.svg",
 };
 
+// 오방색(주색) 정렬 매핑: 동물 key → { SVG class: 오방색 hex }
+// 여기 등록된 클래스만 '오방색' 모드에서 주색으로 바뀌고, 나머지(포인트)는 원본색 유지.
+// '컬러' 모드는 항상 원본 파일 색.
+const HUE_OVERRIDE = {
+  // 닭(酉) = 백(金): 몸통 백색+아이보리, 벼슬·부리·꼬리·다리는 원본(포인트) 유지
+  rooster: { st5: "#FBF6EC", st9: "#EDE3CD", st10: "#E6DCC5", st14: "#FFFFFF", st15: "#F2EAD8" },
+  // 개(戌) = 황(土): 몸통 골든/탄, 눈만 유지
+  dog: { st0: "#8A5E12", st1: "#8A5E12", st2: "#D99A1E", st3: "#EBB236", st4: "#E8D98A", st5: "#F5EAB0", st6: "#E0A21C", st7: "#F4CD48", st9: "#7A5410", st10: "#F1E7A6", st11: "#E4AC26", st12: "#DDA01F", st13: "#ECC94E", st15: "#EDB938", st16: "#E8D98A" },
+  // 돼지(亥) = 흑(水): 몸통 진회+회흑 명도, 눈만 유지
+  pig: { st0: "#38322E", st1: "#423A34", st2: "#2C2622", st3: "#2C2622", st4: "#38322E", st6: "#4A4441", st8: "#231815", st9: "#4A4441", st10: "#38322E", st11: "#2C2622", st12: "#524A44", st13: "#38322E", st14: "#4A4441" },
+};
+
 // ---- SVG 파서: <path>/<circle>/<polygon>/<polyline>/<rect> → 엔진 shapes ----
 function ptsToPath(pts, close) {
   const pairs = pts.trim().split(/\s+/).filter(Boolean);
@@ -29,7 +41,8 @@ function ptsToPath(pts, close) {
   pairs.forEach((p, i) => { d += (i === 0 ? "M" : "L") + p + " "; });
   return d.trim() + (close ? " Z" : "");
 }
-function parseSvg(svg) {
+function parseSvg(svg, hueMap) {
+  hueMap = hueMap || {};
   const vb = svg.match(/viewBox="([\d.\s-]+)"/);
   const nums = vb[1].trim().split(/\s+/).map(Number);
   const W = nums[2], H = nums[3];
@@ -41,37 +54,41 @@ function parseSvg(svg) {
     classFill[cls] = fm ? fm[1].trim() : null;
     return "";
   });
-  function resolveFill(attrs) {
+  // fill = 원본 파일 색(컬러 모드) · fillw = 오방색 주색 정렬 색(오방색 모드)
+  function colorsOf(attrs) {
     const inline = (attrs.match(/fill="([^"]*)"/) || [])[1];
-    if (inline) return inline;
-    const cls = (attrs.match(/class="([^"]*)"/) || [])[1];
-    if (cls) for (const c of cls.split(/\s+/)) if (classFill[c] !== undefined) return classFill[c];
-    return "#000000"; // SVG 기본 채움
+    const cls = ((attrs.match(/class="([^"]*)"/) || [])[1] || "").split(/\s+/);
+    let fill = inline;
+    if (!fill) for (const c of cls) if (classFill[c] !== undefined) { fill = classFill[c]; break; }
+    if (!fill) fill = "#000000";
+    let fillw = fill;
+    for (const c of cls) if (hueMap[c]) { fillw = hueMap[c]; break; }
+    return { fill, fillw };
   }
   const shapes = [];
   const re = /<(path|circle|polygon|polyline|rect)\b([^>]*?)\/?>/g;
   let m;
   while ((m = re.exec(svg))) {
     const tag = m[1], a = m[2];
-    const fill = resolveFill(a);
-    if (!fill || fill === "none") continue; // 장식용 stroke 도형 제외
+    const col = colorsOf(a);
+    if (!col.fill || col.fill === "none") continue; // 장식용 stroke 도형 제외
     if (tag === "path") {
       const d = (a.match(/\bd="([^"]*)"/) || [])[1];
-      if (d) shapes.push({ t: "path", d, fill });
+      if (d) shapes.push({ t: "path", d, fill: col.fill, fillw: col.fillw });
     } else if (tag === "circle") {
       const cx = +(a.match(/\bcx="([^"]*)"/) || [])[1];
       const cy = +(a.match(/\bcy="([^"]*)"/) || [])[1];
       const r = +(a.match(/\br="([^"]*)"/) || [])[1];
-      if (r) shapes.push({ t: "circle", cx, cy, r, fill });
+      if (r) shapes.push({ t: "circle", cx, cy, r, fill: col.fill, fillw: col.fillw });
     } else if (tag === "polygon" || tag === "polyline") {
       const pts = (a.match(/points="([^"]*)"/) || [])[1];
-      if (pts) shapes.push({ t: "path", d: ptsToPath(pts, true), fill });
+      if (pts) shapes.push({ t: "path", d: ptsToPath(pts, true), fill: col.fill, fillw: col.fillw });
     } else if (tag === "rect") {
       const x = +((a.match(/\bx="([^"]*)"/) || [])[1] || 0);
       const y = +((a.match(/\by="([^"]*)"/) || [])[1] || 0);
       const w = +(a.match(/\bwidth="([^"]*)"/) || [])[1];
       const h = +(a.match(/\bheight="([^"]*)"/) || [])[1];
-      if (w && h) shapes.push({ t: "path", d: `M${x},${y} H${x + w} V${y + h} H${x} Z`, fill });
+      if (w && h) shapes.push({ t: "path", d: `M${x},${y} H${x + w} V${y + h} H${x} Z`, fill: col.fill, fillw: col.fillw });
     }
   }
   return { W, H, shapes };
@@ -83,7 +100,7 @@ let html = fs.readFileSync(SRC, "utf8");
 const SHAPES = {};
 Object.keys(SVG_MAP).forEach((key) => {
   const svg = fs.readFileSync(path.join(DIR, SVG_MAP[key]), "utf8");
-  SHAPES[key] = parseSvg(svg);
+  SHAPES[key] = parseSvg(svg, HUE_OVERRIDE[key]);
   console.log(`  ${key}: ${SHAPES[key].shapes.length} shapes (viewBox ${SHAPES[key].W}x${SHAPES[key].H})`);
 });
 
@@ -188,8 +205,8 @@ const INIT = `
         var z=ANIMALS[idx], el=document.getElementById('sjsFree');
         if(el&&z&&z.shapes){
           var seen={}, h='';
-          z.shapes.forEach(function(s){ var f=(s.fill||'').toLowerCase();
-            if(f&&f!=='none'&&!seen[f]){ seen[f]=1; h+='<i class="sjs-sw" title="'+s.fill+'" style="background:'+s.fill+'"></i>'; } });
+          z.shapes.forEach(function(s){ var c=(s.fillw||s.fill||''); var f=c.toLowerCase();
+            if(f&&f!=='none'&&!seen[f]){ seen[f]=1; h+='<i class="sjs-sw" title="'+c+'" style="background:'+c+'"></i>'; } });
           el.innerHTML=h||'<span style="color:var(--ink-faint)">—</span>';
         }
       }catch(e){}
