@@ -20,6 +20,7 @@ const SVG_MAP = {
   rooster: "rooster.svg",
   pig: "pig.svg",
   dog: "dog.svg",
+  rabbit: "rabbit.svg",
 };
 
 // 오방색(주색) 정렬 매핑: 동물 key → { SVG class: 오방색 hex }
@@ -32,6 +33,8 @@ const HUE_OVERRIDE = {
   dog: { st0: "#8A5E12", st1: "#8A5E12", st2: "#D99A1E", st3: "#EBB236", st4: "#E8D98A", st5: "#F5EAB0", st6: "#E0A21C", st7: "#F4CD48", st9: "#7A5410", st10: "#F1E7A6", st11: "#E4AC26", st12: "#DDA01F", st13: "#ECC94E", st15: "#EDB938", st16: "#E8D98A" },
   // 돼지(亥) = 흑(水): 몸통 진회+회흑 명도, 눈만 유지
   pig: { st0: "#38322E", st1: "#423A34", st2: "#2C2622", st3: "#2C2622", st4: "#38322E", st6: "#4A4441", st8: "#231815", st9: "#4A4441", st10: "#38322E", st11: "#2C2622", st12: "#524A44", st13: "#38322E", st14: "#4A4441" },
+  // 토끼(卯) = 청(木, 밝음·무포인트): 몸통 전체 밝은 청색 명도, 눈만 유지
+  rabbit: { st0: "#7EC4E8", st1: "#BEE3F5", st2: "#CDEAF7", st3: "#2E7CB8", st4: "#74BDE4", st6: "#A6D8F0", st7: "#D8EFFA", st8: "#4A9FD4" },
 };
 
 // ---- SVG 파서: <path>/<circle>/<polygon>/<polyline>/<rect> → 엔진 shapes ----
