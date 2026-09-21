@@ -122,6 +122,8 @@ const BRAND_CSS = `
 .sjs-ig{display:inline-flex;align-items:center;gap:8px;background:var(--sjs-gardenia);color:var(--sjs-blue);font-weight:700;padding:11px 18px;border-radius:999px;text-decoration:none;white-space:nowrap;border:0;cursor:pointer;font-size:14px;transition:transform .12s,box-shadow .12s}
 .sjs-ig:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(248,222,5,.4)}
 .wincard .sjs-ig{width:100%;justify-content:center;margin:2px 0 12px}
+#sjsFree{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+#sjsFree .sjs-sw{display:inline-block;width:15px;height:15px;border-radius:4px;border:1px solid rgba(35,24,21,.15)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .sjs-brandbar,:root:not([data-theme="light"]) .sjs-followband{background:#06285c}}
 :root[data-theme="dark"] .sjs-brandbar,:root[data-theme="dark"] .sjs-followband{background:#06285c}
 :root[data-theme="light"] .sjs-brandbar,:root[data-theme="light"] .sjs-followband{background:var(--sjs-blue)}
@@ -177,6 +179,22 @@ const INIT = `
     var _win=win;
     win=function(){ try{_win.apply(this,arguments);}catch(e){}
       record().then(setCount).catch(function(){}); };
+  }
+  // 도감 표기: 각 동물의 자유색(그림에 쓰인 색) 스와치 노출 — 주색(오방색)은 위 칩
+  if(typeof renderMeta==='function'){
+    var _rm=renderMeta;
+    renderMeta=function(){ try{_rm.apply(this,arguments);}catch(e){}
+      try{
+        var z=ANIMALS[idx], el=document.getElementById('sjsFree');
+        if(el&&z&&z.shapes){
+          var seen={}, h='';
+          z.shapes.forEach(function(s){ var f=(s.fill||'').toLowerCase();
+            if(f&&f!=='none'&&!seen[f]){ seen[f]=1; h+='<i class="sjs-sw" title="'+s.fill+'" style="background:'+s.fill+'"></i>'; } });
+          el.innerHTML=h||'<span style="color:var(--ink-faint)">—</span>';
+        }
+      }catch(e){}
+    };
+    try{ renderMeta(); }catch(e){}
   }
 })();
 </script>
