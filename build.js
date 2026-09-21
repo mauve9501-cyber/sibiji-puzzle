@@ -37,6 +37,43 @@ const HUE_OVERRIDE = {
   rabbit: { st0: "#7EC4E8", st1: "#BEE3F5", st2: "#CDEAF7", st3: "#2E7CB8", st4: "#74BDE4", st6: "#A6D8F0", st7: "#D8EFFA", st8: "#4A9FD4" },
 };
 
+// ─── '컬러' 모드(fill) = 십장생 브랜드 아이콘 색 정렬 ───────────────────────────
+// 십장생 아이콘 공통 색 언어: 브랜드 청색을 바탕으로 청색 그라데이션 램프(하이라이트→음영)
+// 로 볼륨을 주고, 모티프별 자연 포인트색(적·황·녹·주황 등)만 소량 얹는다.
+// → 각 동물 몸통 도형은 원본색 '명도'를 기준으로 아래 청색 램프에 매핑하고,
+//   COLOR_ACCENT 에 지정된 클래스만 브랜드 모티프 포인트색으로 유지/치환한다.
+//   (눈=검정, 흰자=백색은 명도로 자동 보존)
+const BLUE_RAMP = [
+  "#003F8D", "#004097", "#0067AA", "#087DBC", "#148FCA",
+  "#1D9CD3", "#23A6DB", "#54C2F0", "#9CD2ED", "#D0E9F7",
+];
+// 브랜드 아이콘 모티프 포인트색
+const P = { red: "#E50012", gold: "#F4A637", palegold: "#F6D863", orange: "#F0842A", brown: "#B05F18", green: "#6FB92C", limegreen: "#A9CF4A" };
+const COLOR_ACCENT = {
+  // 닭: 학(鶴) 아이콘처럼 붉은 볏 + 금빛 부리/날개 + 주황·갈 다리 + 초록 꼬리, 몸통·머리는 청색
+  rooster: { st1: P.red, st3: P.red, st2: P.gold, st9: P.gold, st15: P.gold, st14: P.palegold, st10: P.orange, st12: P.orange, st11: P.brown, st0: P.green, st8: P.limegreen },
+  // 개·돼지·토끼: 거북·물·돌 아이콘처럼 청색 몸통 + 흰 배(명도 자동), 포인트 없음
+  dog: {},
+  pig: {},
+  rabbit: {},
+};
+function hexLum(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return 0.5;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+// 원본 fill → 브랜드 청색 램프(또는 지정 포인트색)
+function brandColor(orig, clsList, accent) {
+  for (const c of clsList) if (accent && accent[c]) return accent[c];
+  const L = hexLum(orig);
+  if (L >= 0.90) return "#FFFFFF";      // 흰자·하이라이트 보존
+  if (L <= 0.12) return orig;           // 눈·검정 보존
+  const i = Math.max(0, Math.min(BLUE_RAMP.length - 1, Math.round(L * (BLUE_RAMP.length - 1))));
+  return BLUE_RAMP[i];
+}
+
 // ---- SVG 파서: <path>/<circle>/<polygon>/<polyline>/<rect> → 엔진 shapes ----
 function ptsToPath(pts, close) {
   const pairs = pts.trim().split(/\s+/).filter(Boolean);
@@ -44,8 +81,9 @@ function ptsToPath(pts, close) {
   pairs.forEach((p, i) => { d += (i === 0 ? "M" : "L") + p + " "; });
   return d.trim() + (close ? " Z" : "");
 }
-function parseSvg(svg, hueMap) {
+function parseSvg(svg, hueMap, accentMap) {
   hueMap = hueMap || {};
+  accentMap = accentMap || {};
   const vb = svg.match(/viewBox="([\d.\s-]+)"/);
   const nums = vb[1].trim().split(/\s+/).map(Number);
   const W = nums[2], H = nums[3];
@@ -57,14 +95,18 @@ function parseSvg(svg, hueMap) {
     classFill[cls] = fm ? fm[1].trim() : null;
     return "";
   });
-  // fill = 원본 파일 색(컬러 모드) · fillw = 오방색 주색 정렬 색(오방색 모드)
+  // 원본 파일 색 → fill = '컬러' 모드(브랜드 아이콘 정렬) · fillw = '오방색' 모드(주색 정렬)
   function colorsOf(attrs) {
     const inline = (attrs.match(/fill="([^"]*)"/) || [])[1];
     const cls = ((attrs.match(/class="([^"]*)"/) || [])[1] || "").split(/\s+/);
-    let fill = inline;
-    if (!fill) for (const c of cls) if (classFill[c] !== undefined) { fill = classFill[c]; break; }
-    if (!fill) fill = "#000000";
-    let fillw = fill;
+    let orig = inline;
+    if (!orig) for (const c of cls) if (classFill[c] !== undefined) { orig = classFill[c]; break; }
+    if (!orig) orig = "#000000";
+    if (orig === "none") return { fill: "none", fillw: "none" };
+    // 컬러 모드: 브랜드 청색 램프/포인트 정렬
+    const fill = brandColor(orig, cls, accentMap);
+    // 오방색 모드: 지정 주색, 없으면 원본(포인트·눈) 유지
+    let fillw = orig;
     for (const c of cls) if (hueMap[c]) { fillw = hueMap[c]; break; }
     return { fill, fillw };
   }
@@ -103,7 +145,7 @@ let html = fs.readFileSync(SRC, "utf8");
 const SHAPES = {};
 Object.keys(SVG_MAP).forEach((key) => {
   const svg = fs.readFileSync(path.join(DIR, SVG_MAP[key]), "utf8");
-  SHAPES[key] = parseSvg(svg, HUE_OVERRIDE[key]);
+  SHAPES[key] = parseSvg(svg, HUE_OVERRIDE[key], COLOR_ACCENT[key]);
   console.log(`  ${key}: ${SHAPES[key].shapes.length} shapes (viewBox ${SHAPES[key].W}x${SHAPES[key].H})`);
 });
 
